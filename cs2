@@ -1,0 +1,173 @@
+using System;
+using System.Threading;
+
+namespace Task2_MutexArrayModification
+{
+    class Program
+    {
+        // Мьютекс для синхронизации доступа к массиву и консоли
+        static Mutex arrayMutex = new Mutex();
+        
+        // Общий массив данных
+        static int[] dataArray;
+        
+        // Флаг завершения модификации массива
+        static bool modificationCompleted = false;
+        
+        // Объект для синхронизации доступа к флагу
+        static object lockObject = new object();
+        
+        // Генератор случайных чисел (thread-safe)
+        static Random random = new Random();
+
+        static void Main(string[] args)
+        {
+            Console.WriteLine("=== Задание 2: Модификация массива и поиск максимума с использованием мьютекса ===\n");
+            
+            // Инициализация массива
+            InitializeArray();
+            
+            Console.WriteLine("Исходный массив:");
+            PrintArray();
+            
+            Console.WriteLine("\n" + new string('-', 60));
+            
+            // Создаем и запускаем потоки
+            Thread thread1 = new Thread(ModifyArray);
+            Thread thread2 = new Thread(FindMax);
+            
+            thread1.Start();
+            thread2.Start();
+            
+            // Ожидаем завершения обоих потоков
+            thread1.Join();
+            thread2.Join();
+            
+            Console.WriteLine("\n" + new string('-', 60));
+            Console.WriteLine("\nПрограмма завершена. Нажмите любую клавишу для выхода...");
+            Console.ReadKey();
+        }
+        
+        /// <summary>
+        /// Инициализация массива случайными числами
+        /// </summary>
+        static void InitializeArray()
+        {
+            // Создаем массив из 10 элементов
+            dataArray = new int[10];
+            
+            for (int i = 0; i < dataArray.Length; i++)
+            {
+                // Генерируем случайные числа от 1 до 100
+                dataArray[i] = random.Next(1, 101);
+            }
+        }
+        
+        /// <summary>
+        /// Вывод массива в консоль
+        /// </summary>
+        static void PrintArray()
+        {
+            Console.Write("[");
+            for (int i = 0; i < dataArray.Length; i++)
+            {
+                Console.Write($"{dataArray[i]}");
+                if (i < dataArray.Length - 1)
+                    Console.Write(", ");
+            }
+            Console.WriteLine("]");
+        }
+        
+        /// <summary>
+        /// Первый поток: модифицирует элементы массива, увеличивая каждый на случайное число
+        /// </summary>
+        static void ModifyArray()
+        {
+            Console.WriteLine("\n[Поток 1] Начал модификацию массива...");
+            
+            // Захватываем мьютекс для монопольного доступа к массиву
+            arrayMutex.WaitOne();
+            
+            try
+            {
+                for (int i = 0; i < dataArray.Length; i++)
+                {
+                    // Генерируем случайное число от 1 до 50
+                    int randomValue = random.Next(1, 51);
+                    int oldValue = dataArray[i];
+                    dataArray[i] += randomValue;
+                    
+                    Console.WriteLine($"  Элемент [{i}]: {oldValue} + {randomValue} = {dataArray[i]}");
+                    
+                    // Небольшая задержка для наглядности
+                    Thread.Sleep(200);
+                }
+                
+                Console.WriteLine("\n[Поток 1] Модификация массива завершена.");
+                
+                // Устанавливаем флаг завершения модификации
+                lock (lockObject)
+                {
+                    modificationCompleted = true;
+                    // Сигнализируем второму потоку, что можно продолжать
+                    Monitor.Pulse(lockObject);
+                }
+            }
+            finally
+            {
+                // Освобождаем мьютекс
+                arrayMutex.ReleaseMutex();
+            }
+        }
+        
+        /// <summary>
+        /// Второй поток: ожидает завершения модификации и находит максимальное значение
+        /// </summary>
+        static void FindMax()
+        {
+            Console.WriteLine("\n[Поток 2] Ожидает завершения модификации массива...");
+            
+            // Ожидаем завершения первого потока
+            lock (lockObject)
+            {
+                while (!modificationCompleted)
+                {
+                    Monitor.Wait(lockObject);
+                }
+            }
+            
+            Console.WriteLine("[Поток 2] Получил сигнал о завершении модификации.");
+            
+            // Небольшая задержка для демонстрации ожидания
+            Thread.Sleep(100);
+            
+            // Захватываем мьютекс для монопольного доступа к массиву
+            arrayMutex.WaitOne();
+            
+            try
+            {
+                Console.WriteLine("\n[Поток 2] Поиск максимального значения в массиве...");
+                
+                int maxValue = dataArray[0];
+                int maxIndex = 0;
+                
+                for (int i = 1; i < dataArray.Length; i++)
+                {
+                    if (dataArray[i] > maxValue)
+                    {
+                        maxValue = dataArray[i];
+                        maxIndex = i;
+                    }
+                    Thread.Sleep(50); // Небольшая задержка для наглядности
+                }
+                
+                Console.WriteLine($"\n[Поток 2] Максимальное значение: {maxValue} (индекс {maxIndex})");
+            }
+            finally
+            {
+                // Освобождаем мьютекс
+                arrayMutex.ReleaseMutex();
+            }
+        }
+    }
+}
