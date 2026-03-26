@@ -1,0 +1,116 @@
+using System;
+using System.Threading;
+
+namespace Task1_MutexSequentialNumbers
+{
+    class Program
+    {
+        // Мьютекс для синхронизации доступа к консоли
+        static Mutex consoleMutex = new Mutex();
+        
+        // Флаг завершения первого потока
+        static bool firstThreadCompleted = false;
+        
+        // Объект для синхронизации доступа к флагу
+        static object lockObject = new object();
+
+        static void Main(string[] args)
+        {
+            Console.WriteLine("=== Задание 1: Последовательный вывод чисел с использованием мьютекса ===\n");
+            Console.WriteLine("Первый поток выводит числа от 0 до 20 (возрастание)");
+            Console.WriteLine("Второй поток ожидает завершения первого и выводит числа от 0 до 10 (убывание)\n");
+            Console.WriteLine(new string('-', 60));
+
+            // Создаем и запускаем потоки
+            Thread thread1 = new Thread(FirstThread);
+            Thread thread2 = new Thread(SecondThread);
+
+            thread1.Start();
+            thread2.Start();
+
+            // Ожидаем завершения обоих потоков
+            thread1.Join();
+            thread2.Join();
+
+            Console.WriteLine("\n" + new string('-', 60));
+            Console.WriteLine("Программа завершена. Нажмите любую клавишу для выхода...");
+            Console.ReadKey();
+        }
+
+        /// <summary>
+        /// Первый поток: выводит числа от 0 до 20 в порядке возрастания
+        /// </summary>
+        static void FirstThread()
+        {
+            // Захватываем мьютекс для монопольного доступа к консоли
+            consoleMutex.WaitOne();
+            
+            try
+            {
+                Console.WriteLine("\n[Поток 1] Вывод чисел от 0 до 20 (возрастание):");
+                Console.Write("  ");
+                
+                for (int i = 0; i <= 20; i++)
+                {
+                    Console.Write($"{i} ");
+                    Thread.Sleep(50); // Небольшая задержка для наглядности
+                }
+                
+                Console.WriteLine("\n[Поток 1] Завершил выполнение.");
+                
+                // Устанавливаем флаг завершения первого потока
+                lock (lockObject)
+                {
+                    firstThreadCompleted = true;
+                    // Сигнализируем второму потоку, что можно продолжать
+                    Monitor.Pulse(lockObject);
+                }
+            }
+            finally
+            {
+                // Освобождаем мьютекс
+                consoleMutex.ReleaseMutex();
+            }
+        }
+
+        /// <summary>
+        /// Второй поток: ожидает завершения первого и выводит числа от 0 до 10 в обратном порядке
+        /// </summary>
+        static void SecondThread()
+        {
+            // Ожидаем завершения первого потока
+            lock (lockObject)
+            {
+                while (!firstThreadCompleted)
+                {
+                    Monitor.Wait(lockObject);
+                }
+            }
+            
+            // Небольшая задержка для демонстрации ожидания
+            Thread.Sleep(100);
+            
+            // Захватываем мьютекс для монопольного доступа к консоли
+            consoleMutex.WaitOne();
+            
+            try
+            {
+                Console.WriteLine("\n[Поток 2] Вывод чисел от 10 до 0 (убывание):");
+                Console.Write("  ");
+                
+                for (int i = 10; i >= 0; i--)
+                {
+                    Console.Write($"{i} ");
+                    Thread.Sleep(50); // Небольшая задержка для наглядности
+                }
+                
+                Console.WriteLine("\n[Поток 2] Завершил выполнение.");
+            }
+            finally
+            {
+                // Освобождаем мьютекс
+                consoleMutex.ReleaseMutex();
+            }
+        }
+    }
+}
